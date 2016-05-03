@@ -92,7 +92,7 @@
             </p>
         </section>
     </body>
-    <script src="AllSets.enUS.json.js"></script>
+    <script src="HearthstoneCards.json.js"></script>
     <script>
         var filterCriteria = [
             "race", // beast, mech, etc. ("race")
@@ -104,7 +104,7 @@
         for(var set in allData){
             for(var card in allData[set]){
                 var theCard = allData[set][card];
-                if ( theCard["type"] === "Minion" ) {
+                if ( theCard["type"] === "MINION" ) {
                     if ( theCard["cost"] != null && theCard["attack"] != null && theCard["health"] != null ) {
                         actualAllData.push(allData[set][card]);
                     }
