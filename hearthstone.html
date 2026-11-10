@@ -76,18 +76,6 @@
                     <option value="*" selected="selected">All</option>
                 </select>
             </p>
-            <p>
-                Color:
-                <select id="color">
-                    <option value="Grayscale" selected="selected">Grayscale</option>
-                    <option value="Red">Red</option>
-                    <option value="Yellow">Yellow</option>
-                    <option value="Green">Green</option>
-                    <option value="Cyan">Cyan</option>
-                    <option value="Blue">Blue</option>
-                    <option value="Magenta">Magenta</option>
-                </select>
-            </p>
             <p id="cards_info">
             </p>
         </section>
@@ -238,20 +226,13 @@
                 xAxisRange.forEach(function(xStr) {
                     var xNum = parseInt(xStr);
                     var cellElement = document.createElement("td");
-                    var colorIndex = qs("select#color").selectedIndex;
-                    var hue = colorIndex === 0
-                        ? 0 // grayscale
-                        : (colorIndex - 1) * 60; // the colors are evenly spaced and listed in order
-                    var saturation = colorIndex === 0
-                        ? "0%" // grayscale
-                        : "100%";
                     var numCardsInCell = dataGrid[yStr] !== undefined && dataGrid[yStr][xStr] !== undefined
                         ? dataGrid[yStr][xStr].length
                         : 0;
                     // darkness relative to the maximum darkness
                     var relativeDarkness = Math.log(1 + numCardsInCell) / maxDarkness;
                     var lightness = (100 - Math.floor(relativeDarkness * 100)) + "%";
-                    cellElement.setAttribute("style", "background-color:hsl(" + hue + ", " + saturation + ", " + lightness + ")");
+                    cellElement.setAttribute("style", "background-color:hsl(0, 0%, " + lightness + ")");
                     
                     // can click any cell of the grid to get more info about cards with that value
                     cellElement.addEventListener("click", function() {
