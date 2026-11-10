@@ -92,7 +92,6 @@
             </p>
         </section>
     </body>
-    <script src="HearthstoneCards.json.js"></script>
     <script>
         var filterCriteria = [
             "race", // beast, mech, etc. ("race")
@@ -100,18 +99,39 @@
             "mechanics" // charge, battlecry, etc. ("mechanics")
         ];
 
+        var CARDS_URL = "https://api.hearthstonejson.com/v1/latest/enUS/cards.collectible.json";
         var actualAllData = [];
-        for(var set in allData){
-            for(var card in allData[set]){
-                var theCard = allData[set][card];
-                if ( theCard["type"] === "MINION" ) {
-                    if ( theCard["cost"] != null && theCard["attack"] != null && theCard["health"] != null ) {
-                        actualAllData.push(allData[set][card]);
-                    }
-                }
-            }
+
+        // Normalize a raw API card so "race" and "playerClass" are always arrays (or null).
+        // Cards can have several tribes ("races") and several classes ("classes", for multi-class cards).
+        function normalizeCard(card) {
+            var races = card.races || (card.race ? [card.race] : null);
+            var classes = card.classes || (card.cardClass ? [card.cardClass] : null);
+            return {
+                name: card.name,
+                cost: card.cost,
+                attack: card.attack,
+                health: card.health,
+                race: races && races.length ? races : null,
+                playerClass: classes && classes.length ? classes : null,
+                mechanics: card.mechanics || null
+            };
         }
-        
+
+        function loadCards() {
+            return fetch(CARDS_URL).then(function(response) {
+                if ( !response.ok ) {
+                    throw new Error("HTTP " + response.status);
+                }
+                return response.json();
+            }).then(function(cards) {
+                actualAllData = cards.filter(function(card) {
+                    return card["type"] === "MINION"
+                        && card["cost"] != null && card["attack"] != null && card["health"] != null;
+                }).map(normalizeCard);
+            });
+        }
+
         // shorthand
         var qs = document.querySelector.bind(document);
         var qsa = document.querySelectorAll.bind(document);
@@ -134,18 +154,16 @@
                 var criteriaValue = qs("select#" + criteria).value;
                 if(criteriaValue !== "*" ) {
                     filteredData = filteredData.filter(function(card) {
+                        var values = card[criteria];
                         if ( criteriaValue === "None" ) {
-                            return card[criteria] == null;
-                        } else if ( criteria === "mechanics" ) {
-                            for ( var m in card["mechanics"] ) {
-                                if ( card["mechanics"][m] === criteriaValue ) {
-                                    return true;
-                                }
-                            }
-                            return false;
-                        } else {
-                            return card[criteria] === criteriaValue;
+                            return values == null;
                         }
+                        if ( values == null ) {
+                            return false;
+                        }
+                        // "ALL" (e.g. Amalgams) counts as every tribe
+                        return values.indexOf(criteriaValue) !== -1
+                            || (criteria === "race" && values.indexOf("ALL") !== -1);
                     });
                 } else {
                 }
@@ -287,19 +305,15 @@
             }
         }
         
-        window.addEventListener("load", function() {
+        function init() {
             filterCriteria.forEach(function(criteria) {
                 // find all possible values for attribute, type, and category
                 var possibleCriteriaValues = {}; // used as a set
                 actualAllData.forEach(function(card) {
                     if ( card[criteria] != null ) {
-                        if ( typeof card[criteria] == "string" ) {
-                            possibleCriteriaValues[card[criteria]] = true;
-                        } else {
-                            card[criteria].forEach(function(criteriaValue) {
-                                possibleCriteriaValues[criteriaValue] = true;
-                            });
-                        }
+                        card[criteria].forEach(function(criteriaValue) {
+                            possibleCriteriaValues[criteriaValue] = true;
+                        });
                     } else {
                         possibleCriteriaValues["None"] = true;
                     }
@@ -324,6 +338,16 @@
             
             // initially create the graph (on the unfiltered data)
             clearAndPopulateGraph();
+        }
+
+        loadCards().then(function() {
+            if ( document.readyState === "loading" ) {
+                window.addEventListener("DOMContentLoaded", init);
+            } else {
+                init();
+            }
+        }).catch(function(err) {
+            document.body.appendChild(document.createTextNode("Failed to load cards from " + CARDS_URL + ": " + err.message));
         });
     </script>
 </html>
