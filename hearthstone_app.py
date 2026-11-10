@@ -95,26 +95,34 @@ def normalize(cards: list[dict]) -> pd.DataFrame:
     return minions[["name", "dbfId", "cost", "attack", "health", "total", "races", "classes", "sets", "mechanics"]]
 
 
+def fmt_utc(iso: str) -> str:
+    return iso.replace("T", " ").replace("+00:00", " UTC")
+
+
 @st.cache_data(ttl=3600, show_spinner="Loading cards...")
-def load_minions(prefer_cache: bool) -> tuple[pd.DataFrame, str]:
-    """Returns (minions, note). The note is empty when live data was used as requested.
+def load_minions(prefer_cache: bool) -> tuple[pd.DataFrame, str, str]:
+    """Returns (minions, label, warning): where the data came from and when, plus a warning if
+    we had to fall back (empty otherwise).
 
     Live is the default. If the live fetch fails we fall back to the cached file rather than erroring.
+    The timestamp is taken at fetch time, so for live data it stays fixed while this result is held
+    in Streamlit's cache.
     """
+    fallback_reason = ""
     if not prefer_cache:
         try:
-            return normalize(fetch_live_cards()), ""
+            cards = fetch_live_cards()
+            fetched_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+            return normalize(cards), f"Live data fetched {fmt_utc(fetched_at)}", ""
         except (OSError, ValueError) as err:  # URLError/HTTPError/timeouts are OSErrors
             fallback_reason = f"Live data is unavailable ({err})."
-    else:
-        fallback_reason = ""
     try:
         cards, fetched_at = read_cache()
     except (OSError, ValueError, KeyError) as err:
         raise RuntimeError(f"{fallback_reason or 'Cached data was requested'} and the cache at {CACHE_PATH} "
                            f"could not be read ({err}). Run `python update_cache.py` while online.") from err
-    when = fetched_at.replace("T", " ").replace("+00:00", " UTC")
-    return normalize(cards), f"{fallback_reason} Using cached data from {when}.".strip()
+    label = f"Cached data from {fmt_utc(fetched_at)}"
+    return normalize(cards), label, (f"{fallback_reason} Using the cached copy instead." if fallback_reason else "")
 
 
 def options_for(df: pd.DataFrame, col: str) -> list[str]:
@@ -222,9 +230,9 @@ def main():
         st.header("Data")
         source = st.radio("Card data", ["Live (HearthstoneJSON)", "Cached copy"], index=0,
                           help="Live is the default; the cached copy is used automatically if live is unavailable.")
-    minions, note = load_minions(prefer_cache=source.startswith("Cached"))
-    if note:
-        st.warning(note)
+    minions, data_label, warning = load_minions(prefer_cache=source.startswith("Cached"))
+    if warning:
+        st.warning(warning)
 
     with st.sidebar:
         st.header("Axes")
@@ -246,7 +254,7 @@ def main():
     for col, wanted in picks.items():
         df = filter_by(df, col, wanted)
 
-    st.caption(f"{len(df)} of {len(minions)} collectible minions match")
+    st.caption(f"{len(df)} of {len(minions)} collectible minions match \u00b7 {data_label}")
     if df.empty:
         st.warning("No minions match these filters.")
         return
