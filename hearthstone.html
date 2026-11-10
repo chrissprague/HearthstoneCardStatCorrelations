@@ -71,6 +71,12 @@
                 </select>
             </p>
             <p>
+                Card Set
+                <select id="set">
+                    <option value="*" selected="selected">All</option>
+                </select>
+            </p>
+            <p>
                 Mechanic
                 <select id="mechanics">
                     <option value="*" selected="selected">All</option>
@@ -84,6 +90,7 @@
         var filterCriteria = [
             "race", // beast, mech, etc. ("race")
             "playerClass", // druid, shaman, etc. ("playerClass")
+            "set", // expansion / card set (TGT, UNGORO, etc.)
             "mechanics" // charge, battlecry, etc. ("mechanics")
         ];
 
@@ -117,6 +124,8 @@
                 cost: card.cost,
                 attack: card.attack,
                 health: card.health,
+                dbfId: card.dbfId,
+                set: card.set ? [card.set] : null,
                 race: races && races.length ? races : null,
                 playerClass: classes && classes.length ? classes : null,
                 mechanics: card.mechanics || null
@@ -329,6 +338,18 @@
                 var criteriaDropdown = qs("select#" + criteria);
                 if ( criteriaDropdown != null ) {
                     var values = Object.keys(possibleCriteriaValues).sort();
+                    if ( criteria === "set" ) {
+                        // roughly chronological: order sets by their lowest card database id
+                        var firstId = {};
+                        actualAllData.forEach(function(card) {
+                            if ( card.set != null && !(card.set[0] in firstId && firstId[card.set[0]] <= card.dbfId) ) {
+                                firstId[card.set[0]] = card.dbfId;
+                            }
+                        });
+                        values.sort(function(a, b) {
+                            return (a === "None") - (b === "None") || firstId[a] - firstId[b];
+                        });
+                    }
                     var addOption = function(value) {
                         var optionElement = document.createElement("option");
                         optionElement.value = value;
