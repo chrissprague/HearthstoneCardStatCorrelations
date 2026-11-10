@@ -19,7 +19,15 @@ pip install -r requirements.txt
 ```bash
 streamlit run hearthstone_app.py
 ```
-Streamlit prints a local URL (normally http://localhost:8501) and opens it in your browser. The card data is downloaded once and cached for an hour, so changing filters doesn't re-fetch it.
+Streamlit prints a local URL (normally http://localhost:8501) and opens it in your browser. The card data is downloaded once and kept in memory for an hour, so changing filters doesn't re-fetch it.
+
+### Live vs cached data
+The app uses live API data by default. If the API can't be reached, it automatically falls back to a cached copy committed at `data/minions_cache.json` and shows a warning with the date of that copy. You can also pick "Cached copy" under **Data** in the sidebar to use it deliberately (for example, offline).
+
+The cache holds only minions and only the fields the app uses (about 850 KB). To refresh it while online:
+```bash
+python update_cache.py
+```
 
 ### Using it
 - **Axes (sidebar):** pick the X and Y stats: attack, health, mana cost, or stat total (attack + health). Darker cells hold more minions (log-scaled, so a few crowded cells don't wash out the rest), and each cell shows its count.

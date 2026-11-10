@@ -7,8 +7,11 @@ minions in it, with links to their wiki pages.
     pip install -r requirements.txt
     streamlit run hearthstone_app.py
 """
+import json
 import urllib.parse
 import urllib.request
+from datetime import datetime, timezone
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -16,6 +19,10 @@ import plotly.graph_objects as go
 import streamlit as st
 
 CARDS_URL = "https://api.hearthstonejson.com/v1/latest/enUS/cards.collectible.json"
+# Offline fallback, refreshed with `python update_cache.py`.
+CACHE_PATH = Path(__file__).parent / "data" / "minions_cache.json"
+CACHE_FIELDS = ["name", "dbfId", "type", "cost", "attack", "health", "race", "races", "cardClass",
+                "classes", "set", "mechanics"]
 
 # Player-facing keywords; any other mechanic tag is treated as an internal tag.
 # Source of truth: https://hearthstone.wiki.gg/wiki/Category:Keywords
@@ -34,14 +41,37 @@ SEPARATOR = "────────"
 MAX_HOVER_NAMES = 12
 
 
-@st.cache_data(ttl=3600, show_spinner="Fetching cards from HearthstoneJSON...")
-def load_minions() -> pd.DataFrame:
-    """Fetch collectible cards and normalize to one row per minion (list-valued tag columns)."""
+def fetch_live_cards() -> list[dict]:
+    """All collectible cards from the HearthstoneJSON API (raises on network/HTTP errors)."""
     # Send our own User-Agent in case the API's CDN rejects urllib's default one.
     req = urllib.request.Request(CARDS_URL, headers={"User-Agent": "hearthstone-card-stat-correlations"})
-    with urllib.request.urlopen(req) as resp:
-        cards = pd.read_json(resp)
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        return json.load(resp)
 
+
+def slim_minions(cards: list[dict]) -> list[dict]:
+    """Keep just the minions, and just the fields this app uses (keeps the cache file small)."""
+    return [{k: c[k] for k in CACHE_FIELDS if k in c} for c in cards if c.get("type") == "MINION"]
+
+
+def write_cache(cards: list[dict], path: Path = CACHE_PATH) -> int:
+    """Save the minions from `cards` (raw API output) as the offline fallback; returns the count."""
+    minions = slim_minions(cards)
+    payload = {"fetched_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+               "source": CARDS_URL, "cards": minions}
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, separators=(",", ":"), sort_keys=True) + "\n")
+    return len(minions)
+
+
+def read_cache(path: Path = CACHE_PATH) -> tuple[list[dict], str]:
+    payload = json.loads(path.read_text())
+    return payload["cards"], payload["fetched_at"]
+
+
+def normalize(cards: list[dict]) -> pd.DataFrame:
+    """Raw API cards to one row per minion (list-valued tag columns)."""
+    cards = pd.DataFrame(cards)
     minions = cards[cards["type"] == "MINION"].dropna(subset=["cost", "attack", "health"]).copy()
     minions[["cost", "attack", "health"]] = minions[["cost", "attack", "health"]].astype(int)
     minions["total"] = minions["attack"] + minions["health"]
@@ -63,6 +93,28 @@ def load_minions() -> pd.DataFrame:
     minions["mechanics"] = [m if isinstance(m, list) else [] for m in minions["mechanics"]]
     minions["sets"] = [[s] if isinstance(s, str) else [] for s in minions["set"]]
     return minions[["name", "dbfId", "cost", "attack", "health", "total", "races", "classes", "sets", "mechanics"]]
+
+
+@st.cache_data(ttl=3600, show_spinner="Loading cards...")
+def load_minions(prefer_cache: bool) -> tuple[pd.DataFrame, str]:
+    """Returns (minions, note). The note is empty when live data was used as requested.
+
+    Live is the default. If the live fetch fails we fall back to the cached file rather than erroring.
+    """
+    if not prefer_cache:
+        try:
+            return normalize(fetch_live_cards()), ""
+        except (OSError, ValueError) as err:  # URLError/HTTPError/timeouts are OSErrors
+            fallback_reason = f"Live data is unavailable ({err})."
+    else:
+        fallback_reason = ""
+    try:
+        cards, fetched_at = read_cache()
+    except (OSError, ValueError, KeyError) as err:
+        raise RuntimeError(f"{fallback_reason or 'Cached data was requested'} and the cache at {CACHE_PATH} "
+                           f"could not be read ({err}). Run `python update_cache.py` while online.") from err
+    when = fetched_at.replace("T", " ").replace("+00:00", " UTC")
+    return normalize(cards), f"{fallback_reason} Using cached data from {when}.".strip()
 
 
 def options_for(df: pd.DataFrame, col: str) -> list[str]:
@@ -166,7 +218,13 @@ def wiki_url(name: str) -> str:
 def main():
     st.set_page_config(page_title="Hearthstone Card Stat Correlations", layout="wide")
     st.title("Hearthstone Card Stat Correlations")
-    minions = load_minions()
+    with st.sidebar:
+        st.header("Data")
+        source = st.radio("Card data", ["Live (HearthstoneJSON)", "Cached copy"], index=0,
+                          help="Live is the default; the cached copy is used automatically if live is unavailable.")
+    minions, note = load_minions(prefer_cache=source.startswith("Cached"))
+    if note:
+        st.warning(note)
 
     with st.sidebar:
         st.header("Axes")
@@ -214,4 +272,5 @@ def main():
                  column_config={"Wiki": st.column_config.LinkColumn("Wiki", display_text="open")})
 
 
-main()
+if __name__ == "__main__":  # `streamlit run` executes the script as __main__
+    main()
