@@ -42,7 +42,7 @@ PUBLIC_MECHANICS = {
 # is carried by lightness as well as hue.
 COLORSCALE = "Viridis"
 
-AXES = {"attack": "Attack", "health": "Health", "cost": "Mana cost", "total": "Stat total (atk + hp)"}
+AXES = {"attack": "Attack", "health": "Health", "cost": "Mana cost", "total": "Stat total"}
 SEPARATOR = "────────"
 MAX_HOVER_NAMES = 12
 
@@ -166,7 +166,7 @@ def make_slots(values, collapse: bool) -> list[tuple[str, int | None]]:
         if prev is not None and v - prev > 1:
             lo, hi = prev + 1, v - 1
             if collapse and hi > lo:
-                slots.append((f"{lo}\u2013{hi}", None))
+                slots.append((f"{lo}..{hi}", None))
             else:
                 slots.extend((str(i), i) for i in range(lo, hi + 1))
         slots.append((str(v), v))
@@ -265,7 +265,7 @@ def main():
         lo, hi = int(minions["total"].min()), int(minions["total"].max())
         collapse = st.checkbox("Collapse empty stretches on the axes", value=True,
                                help="Show a run of unpopulated values (e.g. 12-15) as one blank slot.")
-        total_range = st.slider("Stat total (atk + hp)", lo, hi, (lo, hi))
+        total_range = st.slider("Stat total", lo, hi, (lo, hi))
 
     df = minions[minions["total"].between(*total_range)]
     for col, wanted in picks.items():
