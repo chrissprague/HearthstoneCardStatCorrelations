@@ -89,47 +89,74 @@ def filter_by(df: pd.DataFrame, col: str, wanted: str) -> pd.DataFrame:
     return df[df[col].map(lambda v: wanted in v or (col == "races" and "ALL" in v))]
 
 
-def build_heatmap(df: pd.DataFrame, x: str, y: str) -> go.Figure:
-    # Count over the full integer range so no values are skipped, then reindex to fill gaps with 0.
-    xs = list(range(0, int(df[x].max()) + 1))
-    ys = list(range(0, int(df[y].max()) + 1))
-    counts = pd.crosstab(df[y], df[x]).reindex(index=ys, columns=xs, fill_value=0)
+def make_slots(values, collapse: bool) -> list[tuple[str, int | None]]:
+    """Axis slots as (tick label, stat value). Value is None for a collapsed run of empty values.
 
-    # Names per cell for the hover text.
-    names = df.sort_values("name").groupby([y, x])["name"].apply(list)
+    Always starts at 0. With `collapse`, runs of 2+ missing values between populated ones become one
+    blank slot (e.g. 10, 11, "12-15", 16); a single missing value is still shown as its own slot.
+    """
+    present = sorted({0, *map(int, values)})
+    slots, prev = [], None
+    for v in present:
+        if prev is not None and v - prev > 1:
+            lo, hi = prev + 1, v - 1
+            if collapse and hi > lo:
+                slots.append((f"{lo}\u2013{hi}", None))
+            else:
+                slots.extend((str(i), i) for i in range(lo, hi + 1))
+        slots.append((str(v), v))
+        prev = v
+    return slots
 
-    def hover(yv, xv):
-        cell = names.get((yv, xv), [])
+
+def build_heatmap(df: pd.DataFrame, x: str, y: str, collapse: bool):
+    """Returns the figure plus position -> stat value lookups for each axis (for click handling)."""
+    xslots, yslots = make_slots(df[x], collapse), make_slots(df[y], collapse)
+    xpos = {v: i for i, (_, v) in enumerate(xslots) if v is not None}
+    ypos = {v: i for i, (_, v) in enumerate(yslots) if v is not None}
+
+    z = np.zeros((len(yslots), len(xslots)), dtype=int)
+    names = [[[] for _ in xslots] for _ in yslots]
+    by_name = df.sort_values("name", kind="stable")
+    for name, xv, yv in zip(by_name["name"], by_name[x], by_name[y]):
+        z[ypos[yv], xpos[xv]] += 1
+        names[ypos[yv]][xpos[xv]].append(name)
+
+    def hover(r, c):
+        cell = names[r][c]
         if not cell:
             return ""
         shown = "<br>".join(cell[:MAX_HOVER_NAMES])
         more = f"<br>...and {len(cell) - MAX_HOVER_NAMES} more" if len(cell) > MAX_HOVER_NAMES else ""
-        return f"<b>{AXES[x]}: {xv}, {AXES[y]}: {yv}</b> ({len(cell)})<br>{shown}{more}"
+        return f"<b>{AXES[x]}: {xslots[c][0]}, {AXES[y]}: {yslots[r][0]}</b> ({len(cell)})<br>{shown}{more}"
 
-    text = [[hover(yv, xv) for xv in xs] for yv in ys]
-    z = counts.to_numpy()
-    # Log scale (as in the HTML) so a few huge cells don't wash out the rest; plain counts shown as labels.
+    text = [[hover(r, c) for c in range(len(xslots))] for r in range(len(yslots))]
+    zlog = np.log1p(z)  # log scale (as in the HTML) so a few huge cells don't wash out the rest
     fig = go.Figure(go.Heatmap(
-        x=xs, y=ys, z=np.log1p(z), text=text, hovertemplate="%{text}<extra></extra>",
+        z=zlog, text=text, hovertemplate="%{text}<extra></extra>",
         colorscale=[[0, "white"], [1, "black"]], showscale=False, xgap=1, ygap=1,
     ))
     # Heatmaps don't report clicks to Streamlit, so overlay an invisible scatter trace for selection.
-    gx, gy = np.meshgrid(xs, ys)
-    nonzero = z > 0
+    rows, cols = np.nonzero(z)
     fig.add_trace(go.Scatter(
-        x=gx[nonzero], y=gy[nonzero], mode="markers+text", text=z[nonzero].astype(str),
-        textfont=dict(size=10, color=["white" if v > 0.5 * np.log1p(z.max()) else "black"
-                                      for v in np.log1p(z[nonzero])]),
+        x=cols, y=rows, mode="markers+text", text=z[rows, cols].astype(str),
+        textfont=dict(size=10, color=["white" if zlog[r, c] > 0.5 * zlog.max() else "black"
+                                      for r, c in zip(rows, cols)]),
         marker=dict(size=28, opacity=0), hoverinfo="skip", showlegend=False,
         selected=dict(marker=dict(opacity=0.25, color="#e6a700")),
         unselected=dict(marker=dict(opacity=0)),
     ))
+    # Positions are slot indices, so label them with the real stat values. Axis ranges are pinned
+    # so the first slot (0) sits at the origin. Don't set `scaleanchor`: forcing equal x/y scales
+    # makes Plotly widen one axis symmetrically around the data, which pushed 0 to the middle.
     fig.update_layout(
-        xaxis=dict(title=AXES[x], dtick=1, range=[-0.5, xs[-1] + 0.5]),
-        yaxis=dict(title=AXES[y], dtick=1, range=[-0.5, ys[-1] + 0.5], scaleanchor="x"),
+        xaxis=dict(title=AXES[x], tickvals=list(range(len(xslots))), ticktext=[l for l, _ in xslots],
+                   range=[-0.5, len(xslots) - 0.5], constrain="domain"),
+        yaxis=dict(title=AXES[y], tickvals=list(range(len(yslots))), ticktext=[l for l, _ in yslots],
+                   range=[-0.5, len(yslots) - 0.5], constrain="domain"),
         margin=dict(l=10, r=10, t=10, b=10), height=620, dragmode="select",
     )
-    return fig
+    return fig, [v for _, v in xslots], [v for _, v in yslots]
 
 
 def wiki_url(name: str) -> str:
@@ -153,6 +180,8 @@ def main():
                                ("sets", "Card set"), ("mechanics", "Mechanic")]
         }
         lo, hi = int(minions["total"].min()), int(minions["total"].max())
+        collapse = st.checkbox("Collapse empty stretches on the axes", value=True,
+                               help="Show a run of unpopulated values (e.g. 12-15) as one blank slot.")
         total_range = st.slider("Stat total (atk + hp)", lo, hi, (lo, hi))
 
     df = minions[minions["total"].between(*total_range)]
@@ -164,12 +193,13 @@ def main():
         st.warning("No minions match these filters.")
         return
 
-    fig = build_heatmap(df, x, y)
+    fig, xvals, yvals = build_heatmap(df, x, y, collapse)
     event = st.plotly_chart(fig, on_select="rerun", selection_mode=("points", "box"),
                             key="heatmap", width="stretch")
 
     # Cells chosen by clicking (or box-selecting) the grid.
-    cells = {(int(p["x"]), int(p["y"])) for p in event.selection.points}
+    # Selected points carry slot positions; translate back to stat values (None = collapsed blank slot).
+    cells = {(xvals[int(p["x"])], yvals[int(p["y"])]) for p in event.selection.points}
     if not cells:
         st.info("Click a cell (or box-select several) to list its minions.")
         return
