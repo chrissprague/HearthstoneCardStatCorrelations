@@ -186,7 +186,7 @@ def build_heatmap(df: pd.DataFrame, x: str, y: str, collapse: bool):
     zlog = np.log1p(z)  # log scale (as in the HTML) so a few huge cells don't wash out the rest
     fig = go.Figure(go.Heatmap(
         z=zlog, text=text, hovertemplate="%{text}<extra></extra>",
-        colorscale=[[0, "white"], [1, "black"]], showscale=False, xgap=1, ygap=1,
+        colorscale="Blues", showscale=False, xgap=1, ygap=1,
     ))
     # Heatmaps don't report clicks to Streamlit, so overlay an invisible scatter trace for selection.
     rows, cols = np.nonzero(z)

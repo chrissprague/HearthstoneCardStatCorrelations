@@ -30,7 +30,7 @@ python update_cache.py
 ```
 
 ### Using it
-- **Axes (sidebar):** pick the X and Y stats: attack, health, mana cost, or stat total (attack + health). Darker cells hold more minions (log-scaled, so a few crowded cells don't wash out the rest), and each cell shows its count.
+- **Axes (sidebar):** pick the X and Y stats: attack, health, mana cost, or stat total (attack + health). Darker blue cells hold more minions (log-scaled, so a few crowded cells don't wash out the rest), and each cell shows its count.
 - **Filters (sidebar):** minion type / tribe, player class, card set, mechanic, and a stat total range. "None" selects minions with no value for that field. Selecting a tribe also includes minions that are every tribe (e.g. Amalgams). Sets are listed in release order. Mechanics list player-facing keywords first, then a separator, then internal tags.
 - **Collapse empty stretches (sidebar):** on by default. Runs of unused values (e.g. 12 to 15) show as one blank column or row labeled with the range, so rare outliers don't stretch the chart. Turn it off for true proportions.
 - **Hover** a cell to see the minions in it.
