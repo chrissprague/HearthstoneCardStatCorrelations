@@ -90,6 +90,15 @@
         var CARDS_URL = "https://api.hearthstonejson.com/v1/latest/enUS/cards.collectible.json";
         var actualAllData = [];
 
+        // Player-facing keywords; any other mechanic tag is treated as an internal tag.
+        var PUBLIC_MECHANICS = {};
+        ["BATTLECRY", "CANT_ATTACK", "CHARGE", "CHOOSE_ONE", "COLOSSAL", "COMBO", "CORRUPT", "DEATHRATTLE",
+         "DISCOVER", "DIVINE_SHIELD", "DREDGE", "ECHO", "ELUSIVE", "ENRAGED", "EXCAVATE", "FORGE", "FREEZE",
+         "FRENZY", "GIGANTIFY", "HONORABLE_KILL", "INFUSE", "INSPIRE", "LIFESTEAL", "MAGNETIC", "MANATHIRST",
+         "MINIATURIZE", "OUTCAST", "OVERHEAL", "OVERKILL", "OVERLOAD", "POISONOUS", "QUICKDRAW", "REBORN",
+         "RUSH", "SPELLBURST", "SPELLPOWER", "STEALTH", "TAUNT", "TITAN", "TRADEABLE", "WINDFURY"
+        ].forEach(function(m) { PUBLIC_MECHANICS[m] = true; });
+
         // Normalize a raw API card so "race" and "playerClass" are always arrays (or null).
         // Cards can have several tribes ("races") and several classes ("classes", for multi-class cards).
         function normalizeCard(card) {
@@ -303,12 +312,31 @@
                 // populate dropdowns with values
                 var criteriaDropdown = qs("select#" + criteria);
                 if ( criteriaDropdown != null ) {
-                    Object.keys(possibleCriteriaValues).sort().forEach(function(criteriaValue) {
-                        var criteriaValueElement = document.createElement("option");
-                        criteriaValueElement.value = criteriaValue;
-                        criteriaValueElement.appendChild(document.createTextNode(criteriaValue));
-                        criteriaDropdown.appendChild(criteriaValueElement);
-                    });
+                    var values = Object.keys(possibleCriteriaValues).sort();
+                    var addOption = function(value) {
+                        var optionElement = document.createElement("option");
+                        optionElement.value = value;
+                        optionElement.appendChild(document.createTextNode(value));
+                        criteriaDropdown.appendChild(optionElement);
+                    };
+                    if ( criteria === "mechanics" ) {
+                        // "None" first, then player-facing keywords, a separator, then internal tags
+                        if ( possibleCriteriaValues["None"] ) {
+                            addOption("None");
+                        }
+                        var publicValues = values.filter(function(v) { return PUBLIC_MECHANICS[v] === true; });
+                        var internalValues = values.filter(function(v) { return v !== "None" && PUBLIC_MECHANICS[v] !== true; });
+                        publicValues.forEach(addOption);
+                        if ( publicValues.length && internalValues.length ) {
+                            var separator = document.createElement("option");
+                            separator.disabled = true;
+                            separator.appendChild(document.createTextNode("\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"));
+                            criteriaDropdown.appendChild(separator);
+                        }
+                        internalValues.forEach(addOption);
+                    } else {
+                        values.forEach(addOption);
+                    }
                 }
             });
             
