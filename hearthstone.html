@@ -129,6 +129,11 @@
             });
         }
 
+        // link to the card's page on the Hearthstone wiki
+        function wikiUrl(name) {
+            return "https://hearthstone.wiki.gg/wiki/" + encodeURIComponent(name.replace(/ /g, "_"));
+        }
+
         // shorthand
         var qs = document.querySelector.bind(document);
         var qsa = document.querySelectorAll.bind(document);
@@ -266,6 +271,9 @@
                             dataGrid[yStr][xStr].forEach(function(name) {
                                 var nameElement = document.createElement("li");
                                 var linkElement = document.createElement("a");
+                                linkElement.href = wikiUrl(name);
+                                linkElement.target = "_blank";
+                                linkElement.rel = "noopener";
                                 linkElement.appendChild(document.createTextNode(name));
                                 nameElement.appendChild(linkElement);
                                 nameElementList.appendChild(nameElement);
