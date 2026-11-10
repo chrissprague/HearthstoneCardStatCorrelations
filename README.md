@@ -1,3 +1,5 @@
+<img width="900" height="506" alt="demo" src="https://github.com/user-attachments/assets/2b629045-b249-4a4d-96ab-38bcbc8a5927" />
+
 # HearthstoneCardStatCorrelations
 A fork of [Yawar Raza](https://github.com/YawarRaza7349)'s **[YuGiOhCardStatCorrelations](https://github.com/YawarRaza7349/YuGiOhCardStatCorrelations)** used to visualize card stats in a graph. For the more intricate details, visit his repository. He wrote virtually all of the important code - I just wrote the stuff to make it work with Hearthstone cards.
 
