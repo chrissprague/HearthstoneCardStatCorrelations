@@ -91,12 +91,20 @@
         var actualAllData = [];
 
         // Player-facing keywords; any other mechanic tag is treated as an internal tag.
+        // Source of truth: https://hearthstone.wiki.gg/wiki/Category:Keywords
+        // New keywords get added over time, so re-check that page and update this list when they show up
+        // below the separator in the Mechanic dropdown.
         var PUBLIC_MECHANICS = {};
-        ["BATTLECRY", "CANT_ATTACK", "CHARGE", "CHOOSE_ONE", "COLOSSAL", "COMBO", "CORRUPT", "DEATHRATTLE",
-         "DISCOVER", "DIVINE_SHIELD", "DREDGE", "ECHO", "ELUSIVE", "ENRAGED", "EXCAVATE", "FORGE", "FREEZE",
-         "FRENZY", "GIGANTIFY", "HONORABLE_KILL", "INFUSE", "INSPIRE", "LIFESTEAL", "MAGNETIC", "MANATHIRST",
-         "MINIATURIZE", "OUTCAST", "OVERHEAL", "OVERKILL", "OVERLOAD", "POISONOUS", "QUICKDRAW", "REBORN",
-         "RUSH", "SPELLBURST", "SPELLPOWER", "STEALTH", "TAUNT", "TITAN", "TRADEABLE", "WINDFURY"
+        [
+         // API tags matching keywords listed in the wiki's Keywords category
+         "CHARGE", "COLOSSAL", "CORRUPT", "DREDGE", "ECHO", "EXCAVATE", "FORGE", "FRENZY", "GIGANTIFY",
+         "HONORABLE_KILL", "INFUSE", "INSPIRE", "JADE_GOLEM", "MAGNETIC", "MANATHIRST", "MINIATURIZE",
+         "OVERKILL", "QUICKDRAW", "SPELLBURST", "STARSHIP_PIECE", "TITAN", "TWINSPELL",
+         // core keywords the wiki documents outside of that category listing (it only lists their
+         // Battlegrounds/Mercenaries variants, or omits them)
+         "BATTLECRY", "CHOOSE_ONE", "COMBO", "DEATHRATTLE", "DISCOVER", "DIVINE_SHIELD", "ELUSIVE", "FREEZE",
+         "LIFESTEAL", "OUTCAST", "OVERHEAL", "OVERLOAD", "POISONOUS", "REBORN", "RUSH", "SPELLPOWER",
+         "STEALTH", "TAUNT", "TRADEABLE", "WINDFURY"
         ].forEach(function(m) { PUBLIC_MECHANICS[m] = true; });
 
         // Normalize a raw API card so "race" and "playerClass" are always arrays (or null).
