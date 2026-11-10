@@ -19,10 +19,11 @@ import plotly.graph_objects as go
 import streamlit as st
 
 CARDS_URL = "https://api.hearthstonejson.com/v1/latest/enUS/cards.collectible.json"
-# Offline fallback, refreshed with `python update_cache.py`.
-CACHE_PATH = Path(__file__).parent / "data" / "minions_cache.json"
-CACHE_FIELDS = ["name", "dbfId", "type", "cost", "attack", "health", "race", "races", "cardClass",
-                "classes", "set", "mechanics"]
+# Offline fallback: byte-for-byte copies of the API response, with the fetch time in the file name
+# (cards.collectible_YYYYMMDDTHHMMSSZ.json). The newest one is used. Refresh with `python update_cache.py`.
+CACHE_DIR = Path(__file__).parent / "data"
+CACHE_PREFIX = "cards.collectible_"
+CACHE_TIME_FORMAT = "%Y%m%dT%H%M%SZ"
 
 # Player-facing keywords; any other mechanic tag is treated as an internal tag.
 # Source of truth: https://hearthstone.wiki.gg/wiki/Category:Keywords
@@ -41,32 +42,31 @@ SEPARATOR = "────────"
 MAX_HOVER_NAMES = 12
 
 
-def fetch_live_cards() -> list[dict]:
-    """All collectible cards from the HearthstoneJSON API (raises on network/HTTP errors)."""
+def fetch_live_bytes() -> bytes:
+    """The API response body, untouched (raises on network/HTTP errors)."""
     # Send our own User-Agent in case the API's CDN rejects urllib's default one.
     req = urllib.request.Request(CARDS_URL, headers={"User-Agent": "hearthstone-card-stat-correlations"})
     with urllib.request.urlopen(req, timeout=30) as resp:
-        return json.load(resp)
+        return resp.read()
 
 
-def slim_minions(cards: list[dict]) -> list[dict]:
-    """Keep just the minions, and just the fields this app uses (keeps the cache file small)."""
-    return [{k: c[k] for k in CACHE_FIELDS if k in c} for c in cards if c.get("type") == "MINION"]
+def write_cache(raw: bytes, fetched_at: datetime, cache_dir: Path = CACHE_DIR) -> Path:
+    """Save the API response exactly as received; the fetch time goes in the file name."""
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    path = cache_dir / f"{CACHE_PREFIX}{fetched_at.strftime(CACHE_TIME_FORMAT)}.json"
+    path.write_bytes(raw)
+    return path
 
 
-def write_cache(cards: list[dict], path: Path = CACHE_PATH) -> int:
-    """Save the minions from `cards` (raw API output) as the offline fallback; returns the count."""
-    minions = slim_minions(cards)
-    payload = {"fetched_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-               "source": CARDS_URL, "cards": minions}
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, separators=(",", ":"), sort_keys=True) + "\n")
-    return len(minions)
-
-
-def read_cache(path: Path = CACHE_PATH) -> tuple[list[dict], str]:
-    payload = json.loads(path.read_text())
-    return payload["cards"], payload["fetched_at"]
+def read_latest_cache(cache_dir: Path = CACHE_DIR) -> tuple[list[dict], datetime]:
+    """The newest cached response and the time it was fetched (parsed from its file name)."""
+    # The timestamp format sorts chronologically as plain text.
+    newest = max(cache_dir.glob(f"{CACHE_PREFIX}*.json"), default=None)
+    if newest is None:
+        raise FileNotFoundError(f"no {CACHE_PREFIX}*.json files in {cache_dir}")
+    stamp = newest.stem[len(CACHE_PREFIX):]
+    fetched_at = datetime.strptime(stamp, CACHE_TIME_FORMAT).replace(tzinfo=timezone.utc)
+    return json.loads(newest.read_bytes()), fetched_at
 
 
 def normalize(cards: list[dict]) -> pd.DataFrame:
@@ -95,8 +95,8 @@ def normalize(cards: list[dict]) -> pd.DataFrame:
     return minions[["name", "dbfId", "cost", "attack", "health", "total", "races", "classes", "sets", "mechanics"]]
 
 
-def fmt_utc(iso: str) -> str:
-    return iso.replace("T", " ").replace("+00:00", " UTC")
+def fmt_utc(when: datetime) -> str:
+    return when.strftime("%Y-%m-%d %H:%M:%S UTC")
 
 
 @st.cache_data(ttl=3600, show_spinner="Loading cards...")
@@ -111,15 +111,15 @@ def load_minions(prefer_cache: bool) -> tuple[pd.DataFrame, str, str]:
     fallback_reason = ""
     if not prefer_cache:
         try:
-            cards = fetch_live_cards()
-            fetched_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+            fetched_at = datetime.now(timezone.utc)
+            cards = json.loads(fetch_live_bytes())
             return normalize(cards), f"Live data fetched {fmt_utc(fetched_at)}", ""
         except (OSError, ValueError) as err:  # URLError/HTTPError/timeouts are OSErrors
             fallback_reason = f"Live data is unavailable ({err})."
     try:
-        cards, fetched_at = read_cache()
+        cards, fetched_at = read_latest_cache()
     except (OSError, ValueError, KeyError) as err:
-        raise RuntimeError(f"{fallback_reason or 'Cached data was requested'} and the cache at {CACHE_PATH} "
+        raise RuntimeError(f"{fallback_reason or 'Cached data was requested'} and the cache in {CACHE_DIR} "
                            f"could not be read ({err}). Run `python update_cache.py` while online.") from err
     label = f"Cached data from {fmt_utc(fetched_at)}"
     return normalize(cards), label, (f"{fallback_reason} Using the cached copy instead." if fallback_reason else "")
