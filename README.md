@@ -7,6 +7,7 @@ Card data is fetched live from the [HearthstoneJSON](https://hearthstonejson.com
 `hearthstone_app.py` is a Python port (pandas + Plotly + Streamlit) with the same filters, plus a stat-total (attack + health) axis and filter. Click or box-select cells in the grid to list their minions with wiki links.
 
 ```
+python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 streamlit run hearthstone_app.py
 ```
