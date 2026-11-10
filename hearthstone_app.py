@@ -15,6 +15,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import plotly.colors as pc
 import plotly.graph_objects as go
 import streamlit as st
 
@@ -36,6 +37,10 @@ PUBLIC_MECHANICS = {
     "LIFESTEAL", "OUTCAST", "OVERHEAL", "OVERLOAD", "POISONOUS", "REBORN", "RUSH", "SPELLPOWER",
     "STEALTH", "TAUNT", "TRADEABLE", "WINDFURY",
 }
+
+# Perceptually uniform and readable with common color vision deficiencies, because the cell value
+# is carried by lightness as well as hue.
+COLORSCALE = "Viridis"
 
 AXES = {"attack": "Attack", "health": "Health", "cost": "Mana cost", "total": "Stat total (atk + hp)"}
 SEPARATOR = "────────"
@@ -169,6 +174,19 @@ def make_slots(values, collapse: bool) -> list[tuple[str, int | None]]:
     return slots
 
 
+def readable_text_color(t: float) -> str:
+    """Black or white, whichever contrasts more with the heatmap color at position t (0-1).
+
+    Uses WCAG relative luminance and contrast ratio. Picking the better of black/white always
+    reaches at least ~4.6:1 (WCAG AA), unlike a fixed threshold on t, which fails in the middle of
+    the scale where the color is neither clearly dark nor clearly light.
+    """
+    r, g, b = pc.unlabel_rgb(pc.sample_colorscale(COLORSCALE, [float(t)])[0])
+    lin = [(c / 255 / 12.92) if c / 255 <= 0.03928 else ((c / 255 + 0.055) / 1.055) ** 2.4 for c in (r, g, b)]
+    lum = 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2]
+    return "white" if 1.05 / (lum + 0.05) > (lum + 0.05) / 0.05 else "black"
+
+
 def build_heatmap(df: pd.DataFrame, x: str, y: str, collapse: bool):
     """Returns the figure plus position -> stat value lookups for each axis (for click handling)."""
     xslots, yslots = make_slots(df[x], collapse), make_slots(df[y], collapse)
@@ -194,14 +212,13 @@ def build_heatmap(df: pd.DataFrame, x: str, y: str, collapse: bool):
     zlog = np.log1p(z)  # log scale (as in the HTML) so a few huge cells don't wash out the rest
     fig = go.Figure(go.Heatmap(
         z=zlog, text=text, hovertemplate="%{text}<extra></extra>",
-        colorscale="Blues", showscale=False, xgap=1, ygap=1,
+        colorscale=COLORSCALE, zmin=0, zmax=float(zlog.max()), showscale=False, xgap=1, ygap=1,
     ))
     # Heatmaps don't report clicks to Streamlit, so overlay an invisible scatter trace for selection.
     rows, cols = np.nonzero(z)
     fig.add_trace(go.Scatter(
         x=cols, y=rows, mode="markers+text", text=z[rows, cols].astype(str),
-        textfont=dict(size=10, color=["white" if zlog[r, c] > 0.5 * zlog.max() else "black"
-                                      for r, c in zip(rows, cols)]),
+        textfont=dict(size=12, color=[readable_text_color(zlog[r, c] / zlog.max()) for r, c in zip(rows, cols)]),
         marker=dict(size=28, opacity=0), hoverinfo="skip", showlegend=False,
         selected=dict(marker=dict(opacity=0.25, color="#e6a700")),
         unselected=dict(marker=dict(opacity=0)),
