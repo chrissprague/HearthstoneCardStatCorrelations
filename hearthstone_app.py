@@ -154,7 +154,7 @@ def build_heatmap(df: pd.DataFrame, x: str, y: str, collapse: bool):
                    range=[-0.5, len(xslots) - 0.5], constrain="domain"),
         yaxis=dict(title=AXES[y], tickvals=list(range(len(yslots))), ticktext=[l for l, _ in yslots],
                    range=[-0.5, len(yslots) - 0.5], constrain="domain"),
-        margin=dict(l=10, r=10, t=10, b=10), height=620, dragmode="select",
+        margin=dict(l=10, r=10, t=10, b=10), height=max(900, 40 * len(yslots) + 150), dragmode="select",
     )
     return fig, [v for _, v in xslots], [v for _, v in yslots]
 
